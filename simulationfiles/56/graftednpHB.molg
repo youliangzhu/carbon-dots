@@ -1,0 +1,102 @@
+#!/usr/bin/python
+import sys
+sys.path.append('/opt/galamost4/lib')
+import molgen
+import os
+import string
+import math
+import re
+import random
+
+lx=50
+ly=50
+lz=50
+
+
+nppfile="npc100.xml"
+chain_len_a=4
+num_chain_a=56
+npp=250
+
+def chain_generate(anchor_id, start_id, chainlen):
+	topology=str(anchor_id)+"-"+str(start_id)+","
+	for i in range(0, chainlen-1):
+		index = i + start_id
+		topology+=str(index)+"-"+str(index+1)+","
+	return topology
+
+topology=''
+types=''
+startid=npp
+
+xml=file(nppfile)
+pos=[]
+k=0
+for line in xml:
+	if k>=5 and k<=npp+4:
+		lin=line.strip('\n')
+		la=re.split('	| ',lin)
+		lb=[]
+		for i in range(0,len(la)):
+			if (la[i]!=' ' and la[i]!=''):
+				lb.append(la[i])
+		pos.append([float(lb[0]), float(lb[1]), float(lb[2])])
+	k+=1
+
+def takeSecond(elem):
+    return elem[1]
+	
+id_list=[]
+for i in range(0, npp):
+	pi = pos[i]
+	r = math.sqrt(pi[0]*pi[0] + pi[1]*pi[1] + pi[2]*pi[2])
+	id_list.append((i, r))
+id_list.sort(key=takeSecond)
+#print id_list
+
+for i in range(0, num_chain_a):
+	id=id_list[npp-i-1][0]
+	topology += chain_generate(id,  startid, chain_len_a)
+	types +="B,C,B,D,"
+	startid += chain_len_a
+xml.close()
+	
+types = types[0:len(types)-1]
+topology = topology[0:len(topology)-1]
+
+
+total_np=startid
+mol0=molgen.Molecule(nppfile, total_np)
+mol0.setParticleTypes(types)
+mol0.setTopology(topology)
+mol0.setBondLength(0.47)
+mol0.setMass(72.0)
+mol0.setAngleDegree("A","A","B", 0)
+mol0.setAngleDegree("A","B","C", 0)
+mol0.setAngleDegree("B","C","B", 0)
+mol0.setAngleDegree("C","B","D", 0)
+mol0.setBody("A", 0)
+mol0.setInit("D", 1)
+mol0.setCris("D", 0)
+mol0.setInit("B", 1)
+mol0.setCris("B", 0)
+mol0.setSphere(0.0, 0.0, 0.0, 2.0, 20.0)
+
+gen0=molgen.Generators(lx,ly,lz)
+gen0.addMolecule(mol0,1)
+gen0.setMinimumDistance(0.42)
+gen0.setMinimumDistance("D","D",0.5)
+gen0.setMinimumDistance("A","D",0.5)
+gen0.setMinimumDistance("B","D",0.5)
+gen0.setMinimumDistance("C","D",0.5)
+gen0.outPutXml("graftnp")
+
+
+mol1=molgen.Object("graftnp.xml", total_np, molgen.Object.Shape.none)
+mol1.setMass(72.0)
+mol1.setBox(-lx/2.0+1.0, lx/2.0-1.0, -ly/2.0+1.0, ly/2.0-1.0, -lz/2.0, lz/2.0)  
+
+gen=molgen.Generators(lx, ly, lz);
+gen.addMolecule(mol1,  100)
+gen.setMinimumDistance(0.9)
+gen.outPutXml("gencon")
