@@ -1,0 +1,147 @@
+#!/usr/bin/python
+import sys
+sys.path.append('/opt/galamost4/lib')
+
+import galamost
+from optparse import OptionParser
+import math
+# import numpy as np
+
+global _options
+parser = OptionParser()
+parser.add_option('--gpu', dest='gpu',help='GPU on which to execute')
+(_options, args) = parser.parse_args()
+
+filename = 'gencon.xml'
+build_method = galamost.XmlReader(filename)
+perform_config = galamost.PerformConfig(_options.gpu)
+all_info = galamost.AllInfo(build_method,perform_config)
+
+dt = 0.01
+app = galamost.Application(all_info, dt)
+
+neighbor_list = galamost.NeighborList(all_info, 1.4, 0.2)#(,rcut,rbuffer)
+neighbor_list.addExclusionsFromBonds()
+
+pf = galamost.LjForce(all_info, neighbor_list, 1.4)
+pf.setParams('A', 'A', 3.5, 0.47, 1.0)
+pf.setParams('B', 'B', 4.0, 0.47, 1.0)
+pf.setParams('C', 'C', 3.5, 0.47, 1.0)
+pf.setParams('D', 'D', 5.6, 0.55, 1.0)
+
+pf.setParams('A', 'B', 2.7, 0.47, 1.0)
+pf.setParams('A', 'C', 3.5, 0.47, 1.0)
+pf.setParams('A', 'D', 3.0, 0.51, 1.0)
+
+pf.setParams('B', 'C', 2.7, 0.47, 1.0)
+pf.setParams('B', 'D', 5.0, 0.51, 1.0)
+
+pf.setParams('C', 'D', 3.0, 0.51, 1.0)
+app.add(pf)
+
+all_info.addBondType('sticky') 
+bondforce = galamost.BondForceHarmonic(all_info) 
+bondforce.setParams('sticky', 1250.0, 0.47)
+bondforce.setParams('A-A', 1250.0, 0.47)
+bondforce.setParams('A-B', 1250.0, 0.47)
+bondforce.setParams('B-C', 1250.0, 0.47)
+bondforce.setParams('B-D', 1250.0, 0.47)
+app.add(bondforce)
+
+angleforce = galamost.AngleForceHarmonic(all_info) 
+angleforce.setParams('A-A-B', 25.0, 90.0)
+angleforce.setParams('A-B-C', 25.0, 180.0)
+angleforce.setParams('B-C-B', 25.0, 180.0)
+angleforce.setParams('C-B-D', 25.0, 180.0)
+app.add(angleforce)
+
+group = galamost.ParticleSet(all_info, "all")
+comp_info = galamost.ComputeInfo(all_info, group)
+
+sort_method = galamost.Sort(all_info)
+sort_method.setPeriod(1000)
+app.add(sort_method)
+ 
+DInfo = galamost.DumpInfo(all_info, comp_info, 'data.log')
+DInfo.setPeriod(1000)
+DInfo.dumpPressTensor()
+DInfo.dumpBoxSize()
+app.add(DInfo)
+
+
+Temperature = 300.000  #k
+T = Temperature*8.3143/1000.0#reduced unit
+
+npt = galamost.Npt(all_info, group, comp_info, comp_info, T, 0.0602, 1.0, 1.0)#( ,temperature, tau)
+app.add(npt)
+
+
+xml = galamost.XmlDump(all_info, 'p') # output the configuration files in xml format
+xml.setPeriod(50000)# (period)
+xml.setOutputBond(True)
+xml.setOutputAngle(True)
+xml.setOutputBody(True)
+xml.setOutputImage(True)
+xml.setOutputMass(True)
+xml.setOutputVelocity(True)
+app.add(xml)
+
+ljw=galamost.LjWallForce(all_info, 1.0*2.0**(1.0/6.0))
+ljw.setBoundaryDirection(True, True, False)
+ljw.setParams("A", 1.0, 1.0, 1.0)
+ljw.setParams("B", 1.0, 1.0, 1.0)
+ljw.setParams("C", 1.0, 1.0, 1.0)
+ljw.setParams("D", 1.0, 1.0, 1.0)
+app.add(ljw)
+
+epsilonHB = 10.0
+
+reaction = galamost.DePolymerization(all_info, T, 16361)  
+reaction.setParams('sticky', 1250.0, 0.47,  0.47, epsilonHB, 1.0, galamost.DePolymerization.Func.harmonic)#(bondname, K, r_0, b_0, epsilon0, Pr,function:FENE,harmonic)
+reaction.setPeriod(10) # how many steps to react
+reaction.setCountUnbonds(100000)
+app.add(reaction)
+
+reaction1 = galamost.Polymerization(all_info, neighbor_list, 0.47*1.3, 16361) #rc=1.199,epsilon=30;
+reaction1.setFuncReactRule(True, 1250.0, 0.47, 0.47, epsilonHB, galamost.Polymerization.Func.harmonic)#(func_rule, K, r_0, b_0, epsilon0, function)
+reaction1.setPr("B", "B", 1.0)
+reaction1.setPr("D", "D", 1.0)
+reaction1.setPr("B", "D", 1.0)
+reaction1.setNewBondType("sticky")
+reaction1.setT(T)
+reaction1.setMaxCris('B', 1)
+reaction1.setMaxCris('D', 1)
+reaction1.setPeriod(10)
+reaction1.setInitInitReaction(True)
+reaction1.setBondEx(False)
+app.add(reaction1)
+
+app.run(1000000)
+
+lx=all_info.getBasicInfo().getGlobalBox().getL().x
+ly=all_info.getBasicInfo().getGlobalBox().getL().y
+lz=all_info.getBasicInfo().getGlobalBox().getL().z
+
+print lz
+b=galamost.BoxSize(lx+40, ly+40, lz)
+all_info.getBasicInfo().setGlobalBox(b)
+
+app.remove(npt)
+
+bd = galamost.BdNvt(all_info, group, T, 12345)
+app.add(bd)
+
+app.run(1000000)
+
+
+v = galamost.VariantLinear()
+v.setPoint(2000000, lz)#time step, box length.
+v.setPoint(10000000, lz*3.0)
+
+axs = galamost.AxialStretching(all_info,group)
+axs.setBoxLength(v,'Z')
+axs.setPeriod(500)
+app.add(axs)
+
+app.run(8000000)
+neighbor_list.printStats()
