@@ -94,7 +94,7 @@ ljw.setParams("C", 1.0, 1.0, 1.0)
 ljw.setParams("D", 1.0, 1.0, 1.0)
 app.add(ljw)
 
-epsilonHB = 10.0
+epsilonHB = 20.0
 
 reaction = galamost.DePolymerization(all_info, T, 16361)  
 reaction.setParams('sticky', 1250.0, 0.47,  0.47, epsilonHB, 1.0, galamost.DePolymerization.Func.harmonic)#(bondname, K, r_0, b_0, epsilon0, Pr,function:FENE,harmonic)
